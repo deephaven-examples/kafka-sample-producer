@@ -129,11 +129,13 @@ relatedQuotes = trades.aj(quotes, "Sym,Time=BidTime", "BidTime,BidPrice,BidSize,
 The next query calculates the volume average price for each symbol on a per-minute basis, using the start of the minute as the binning value.
 
 ```python skip-test
-from deephaven import caf
+from deephaven import Aggregation as agg, combo_agg
 vwap = trades.view("Sym","Size","Price","TimeBin=lowerBin(Time,1*MINUTE)","GrossPrice=Price*Size")\
-    .by(caf.AggCombo(caf.AggAvg("AvgPrice = Price"),\
-    caf.AggSum("Volume = Size"),\
-    caf.AggSum("TotalGross = GrossPrice")), "Sym","TimeBin")\
+    .aggBy(combo_agg([\
+    agg.AggAvg("AvgPrice = Price"),\
+    agg.AggSum("Volume = Size"),\
+    agg.AggSum("TotalGross = GrossPrice")]),\
+    "Sym","TimeBin")\
     .updateView("VWAP=TotalGross/Volume")
 ```
 
