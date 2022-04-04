@@ -59,12 +59,14 @@ Navigate to [http://localhost:10000/ide](http://localhost:10000/ide/) for the De
 The following query creates the `quotes` table:
 
 ```python skip-test
-from deephaven import KafkaTools
-from deephaven import Types as dh
-quotes = KafkaTools.consumeToTable({ 'bootstrap.servers' : '10.128.0.252:9092' },
+from deephaven import kafka_consumer as ck
+from deephaven.stream.kafka.consumer import TableType, KeyValueSpec
+import deephaven.Types as dh
+
+quotes = KafkaTools.consume({ 'bootstrap.servers' : '10.128.0.252:9092' },
                     'quotes',
-                    key=KafkaTools.IGNORE,
-                    value=KafkaTools.json([  ('Sym', dh.string),
+                    key_spec=KeyValueSpec.IGNORE,
+                    valu_spece=KafkaTools.json_spec([  ('Sym', dh.string),
                                 ('AskSize',  dh.int_),
                                 ('AskPrice',  dh.double),
                                 ('BidSize',  dh.int_),
@@ -73,26 +75,26 @@ quotes = KafkaTools.consumeToTable({ 'bootstrap.servers' : '10.128.0.252:9092' }
                                 ('BidExchange', dh.string),
                                 ('AskTime', dh.long_),
                                 ('BidTime', dh.long_)]),
-                    table_type='append') \
-    .updateView("AskTime = millisToTime(AskTime)") \
-    .updateView("BidTime = millisToTime(BidTime)")
+                    table_type=TableType.Append) \
+    .update_view(["AskTime = millisToTime(AskTime)"]) \
+    .update_view(["BidTime = millisToTime(BidTime)"])
 ```
 
 Let's walk through the query step-by-step:
 
-- [`KafkaTools`](https://deephaven.io/core/javadoc/io/deephaven/kafka/KafkaTools.html) provides the [`consumeToTable`](../reference/data-import-export/Kafka/consumeToTable/) method, which is used to connect to a Kafka broker and receive events.
+- [`kafka_consumer`](https://deephaven.io/core/javadoc/io/deephaven/kafka/KafkaTools.html) provides the [`consumeToTable`](../reference/data-import-export/Kafka/consumeToTable/) method, which is used to connect to a Kafka broker and receive events.
 
 - The `Types` module, imported as `dh`, contains data type definitions to be used when adding columns/fields for parsing from JSON messages to a Deephaven table. Note the trailing underscore, which is a required part of the name for the int and long types used here.
 
 - `quotes` is the name of the table to create from the [`consumeToTable`](https://deephaven.io/core/docs/reference/data-import-export/Kafka/consumeToTable/) call.
 
-- The [`consumeToTable`](https://deephaven.io/core/docs/reference/data-import-export/Kafka/consumeToTable/) call includes the following:
+- The [`consume`](https://deephaven.io/core/docs/reference/data-import-export/Kafka/consumeToTable/) call includes the following:
 
   - The first argument is a dictionary which can contain Kafka client properties. The one property which we need to set is the `bootstrap.servers` list (the broker to connect to), including its name, or IP address, and port. 9092 is the default port for Kafka.
   - The next argument is the name of the topic to connect to (`quotes`).
   - The next two arguments are the key/value pair to parse from Kafka messages. In this case, we are going to accept all keys (`KafkaTools.IGNORE`), and parse the values as JSON (`KafkaTools.json`), with the array of the `KafkaTools.json` argument being the list of columns/fields and their data types.
 
-- The last two statements ([`.updateView`](https://deephaven.io/core/docs/reference/table-operations/select/update-view/)) operate on the `quotes` table to convert epoch milliseconds Ask and Bid time values to Deephaven `DBDateTime` values.
+- The last two statements ([`.update_view`](https://deephaven.io/core/docs/reference/table-operations/select/update-view/)) operate on the `quotes` table to convert epoch milliseconds Ask and Bid time values to Deephaven `DBDateTime` values.
 
 The result is a `quotes` table which populates as new events arrive:
 
@@ -103,19 +105,21 @@ New messages are added to the bottom of the table, by default, so you may want t
 A similar query gets the `trades` topic data from Kafka:
 
 ```python skip-test
-from deephaven import KafkaTools
-from deephaven import Types as dh
-trades = KafkaTools.consumeToTable({ 'bootstrap.servers' : '10.128.0.252:9092' },
+from deephaven import kafka_consumer as ck
+from deephaven.stream.kafka.consumer import TableType, KeyValueSpec
+import deephaven.Types as dh
+
+trades = ck.consume({ 'bootstrap.servers' : '10.128.0.252:9092' },
                     'trades',
-                    key=KafkaTools.IGNORE,
-                    value=KafkaTools.json([  ('Sym', dh.string),
+                    key_spec=KeyValueSpec.IGNORE,
+                    value_spec=ck.json_spec([  ('Sym', dh.string),
                                 ('Size',  dh.int_),
                                 ('Price',  dh.double),
                                 ('DayVolume',  dh.int_),
                                 ('Exchange', dh.string),
                                 ('Time', dh.long_)]),
-                    table_type='append') \
-    .updateView("Time = millisToTime(Time)")
+                    table_type=TableType.Append) \
+    .update_view(["Time = millisToTime(Time)"])
 ```
 
 ### Perform aggregations
@@ -123,20 +127,20 @@ trades = KafkaTools.consumeToTable({ 'bootstrap.servers' : '10.128.0.252:9092' }
 We can then write other queries which combine and/or aggregate data from these streams. This query uses an [as-of join](https://deephaven.io/core/docs/reference/table-operations/join/aj/) to correlate trade events with the most recent bid for the same symbol.
 
 ```python skip-test
-relatedQuotes = trades.aj(quotes, "Sym,Time=BidTime", "BidTime,BidPrice,BidSize,BidExchange")
+relatedQuotes = trades.aj(table = quotes, on =["Sym,Time=BidTime"], joins =["BidTime,BidPrice,BidSize,BidExchange"])
 ```
 
 The next query calculates the volume average price for each symbol on a per-minute basis, using the start of the minute as the binning value.
 
 ```python skip-test
-from deephaven import Aggregation as agg, combo_agg
-vwap = trades.view("Sym","Size","Price","TimeBin=lowerBin(Time,1*MINUTE)","GrossPrice=Price*Size")\
-    .aggBy(combo_agg([\
-    agg.AggAvg("AvgPrice = Price"),\
-    agg.AggSum("Volume = Size"),\
-    agg.AggSum("TotalGross = GrossPrice")]),\
-    "Sym","TimeBin")\
-    .updateView("VWAP=TotalGross/Volume")
+from deephaven import agg as agg
+vwap = trades.view(formulas = ["Sym","Size","Price","TimeBin=lowerBin(Time,1*MINUTE)","GrossPrice=Price*Size"])\
+    .agg_by([\
+    agg.avg(["AvgPrice = Price"]),\
+    agg.sum_(["Volume = Size"]),\
+    agg.sum_(["TotalGross = GrossPrice"])],\
+     by = ["Sym","TimeBin"])\
+    .update_view(["VWAP=TotalGross/Volume"])
 ```
 
 :::note
@@ -145,16 +149,6 @@ The `relatedQuotes` and `vwap` tables do not work well outside of trading hours,
 
 :::
 
-### Create a simple plot
-
-Now, we'll create the `aaplVwap` table to limit the data to AAPL events, then plot VWAP vs actual price for each trade event. The query below depends on the `vwap` table created in the previous example:
-
-```python skip-test
-from deephaven import Plot
-aaplVwap = vwap.where("Sym=`AAPL`")
-p = Plot.plot("VWAP",aaplVwap,"TimeBin","VWAP")\
-    .plot("Price",trades.where("Sym=`AAPL`"),"Time","Price").show()
-```
 
 ## Related documentation
 
