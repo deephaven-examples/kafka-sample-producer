@@ -23,6 +23,13 @@ To load this container, inside the repository directory run:
 docker load < kafka_sample_producer.tar.gz
 ```
 
+Note if you use lfs you might night to run 
+```shell
+git lfs pull
+```
+
+To download the full file.
+
 Next, one needs to run the broker. To do this you need to list your IP address. On a Mac the command is:
 
 ```shell
@@ -61,20 +68,20 @@ The following query creates the `quotes` table:
 ```python skip-test
 from deephaven import kafka_consumer as ck
 from deephaven.stream.kafka.consumer import TableType, KeyValueSpec
-import deephaven.Types as dh
+import deephaven.dtypes as dh
 
-quotes = KafkaTools.consume({ 'bootstrap.servers' : '10.128.0.252:9092' },
+quotes = ck.consume({ 'bootstrap.servers' : '192.168.86.155:9092' },
                     'quotes',
                     key_spec=KeyValueSpec.IGNORE,
-                    valu_spece=KafkaTools.json_spec([  ('Sym', dh.string),
+                    value_spec=ck.json_spec([  ('Sym', dh.string),
                                 ('AskSize',  dh.int_),
                                 ('AskPrice',  dh.double),
                                 ('BidSize',  dh.int_),
                                 ('BidPrice',  dh.double),
                                 ('AskExchange', dh.string),
                                 ('BidExchange', dh.string),
-                                ('AskTime', dh.long_),
-                                ('BidTime', dh.long_)]),
+                                ('AskTime', dh.int_),
+                                ('BidTime', dh.int_)]),
                     table_type=TableType.Append) \
     .update_view(["AskTime = millisToTime(AskTime)"]) \
     .update_view(["BidTime = millisToTime(BidTime)"])
@@ -117,7 +124,7 @@ trades = ck.consume({ 'bootstrap.servers' : '10.128.0.252:9092' },
                                 ('Price',  dh.double),
                                 ('DayVolume',  dh.int_),
                                 ('Exchange', dh.string),
-                                ('Time', dh.long_)]),
+                                ('Time', dh.int_)]),
                     table_type=TableType.Append) \
     .update_view(["Time = millisToTime(Time)"])
 ```
